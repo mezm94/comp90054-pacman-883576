@@ -17,7 +17,6 @@ import capture
 import random, time, util
 from game import Directions
 import game
-import numpy as np
 from util import nearestPoint
 #################
 # Team creation #
