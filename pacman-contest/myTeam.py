@@ -105,6 +105,54 @@ def nextPos(pos, action):
     return (x - 1, y)
   return pos
 
+def manhattanDist((x1,y1),(x2,y2)):
+   return x2-x1+y2-y1
+
+
+def getPossibleEntry(pos, tunnels, legalPositions):
+    x, y = pos
+    if (x + 1, y) in legalPositions and (x + 1, y) not in tunnels:
+        return (x + 1, y)
+    if (x - 1, y) in legalPositions and (x - 1, y) not in tunnels:
+        return (x - 1, y)
+    if (x, y + 1) in legalPositions and (x, y + 1) not in tunnels:
+        return (x, y + 1)
+    if (x, y - 1) in legalPositions and (x, y - 1) not in tunnels:
+        return (x, y - 1)
+    return None
+
+
+def getATunnel(pos, tunnels):
+
+    if pos not in tunnels:
+        return None
+
+    bfs_queue = util.Queue()
+    closed = []
+    bfs_queue.push(pos)
+
+    while not bfs_queue.isEmpty():
+        currPos = bfs_queue.pop()
+
+        if currPos not in closed:
+            closed.append(currPos)
+            succssorsPos = getSuccsorsPos(currPos, tunnels)
+            for i in succssorsPos:
+                if i not in closed:
+                    bfs_queue.push(i)
+
+    return closed
+
+
+def getTunnelEntry(pos, tunnels, legalPositions):
+    if pos not in tunnels:
+        return None
+    aTunnel = getATunnel(pos, tunnels)
+    for i in aTunnel:
+        possibleEntry = getPossibleEntry(i, tunnels, legalPositions)
+        if possibleEntry != None:
+            return possibleEntry
+
 
 class ReflexCaptureAgent(CaptureAgent):
   """
@@ -147,11 +195,15 @@ class ReflexCaptureAgent(CaptureAgent):
     self.tunnelEntry = None
     global walls 
     global tunnels
+    global openRoad
+    global legalPositions
     walls = gameState.getWalls().asList()
     if len(tunnels) == 0:
       legalPositions = [p for p in gameState.getWalls().asList(False)]
       tunnels = getAllTunnels(legalPositions)
-   
+      openRoad = list(set(legalPositions).difference(set(tunnels)))
+
+
 
   def chooseAction(self, gameState):
     """
@@ -272,7 +324,7 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
     myPos = successor.getAgentState(self.index).getPosition()
     nextPosition = nextPos(curPos,action)
     enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
-    ghost = [a for a in enemies if not a.isPacman and a.getPosition() is not None]
+    ghost = [a for a in enemies if not a.isPacman and a.getPosition() is not None and manhattanDist(curPos,a.getPosition()) <= 5]
     scaredGhost = [a for a in ghost if a.scaredTimer > 0]
     activeGhost = [a for a in ghost if a not in scaredGhost]
     invaders = [a for a in enemies if a.isPacman and a.getPosition() is not None]
@@ -282,7 +334,8 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
     capsule = self.getCapsules(gameState)
     checkTunnel = self.ifWasteTunnel(gameState, successor)
 
-
+    if self.getTimeLeft(gameState)/4 < self.getLengthToHome(gameState) + 3:
+        features['distToHome'] = self.getLengthToHome(successor)
 
     features['closestFood'] = minDistance
     if myPos in self.getFood(gameState).asList():
@@ -305,7 +358,6 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         ghostPos = [a.getPosition() for a in activeGhost]
         if nextPosition in ghostPos:
             features['die'] = 1
-
 
     if successor.getAgentState(self.index).isPacman and curPos not in tunnels and \
         successor.getAgentState(self.index).getPosition() in tunnels and checkTunnel == 0:
@@ -342,11 +394,23 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
     Normally, weights do not depend on the gamestate.  They can be either
     a counter or a dictionary.
     """
-    return {'closestFood':  -2, 'successorScore': 800,  'distanceToCapsule': 4000, 'stop':-1000,
+    return {'closestFood':  -2, 'distToHome':-10,'successorScore': 800,  'distanceToCapsule': 4000, 'stop':-1000,
         'distToGhost': 50, 'wasteAction': 2000,'escapeTunnel':-3000,'die':-10000}
 
+  def getLengthToHome(self, gameState):
+      curPos = gameState.getAgentState(self.index).getPosition()
+      width = gameState.data.layout.width
+      height = gameState.data.layout.height
+      legalPositions = [p for p in gameState.getWalls().asList(False)]
+      legalRed = [p for p in legalPositions if p[0] == width / 2]
+      legalBlue = [p for p in legalPositions if p[0] == width / 2 + 1]
+      if self.red:
+          return min([self.getMazeDistance(curPos, a) for a in legalRed])
+      else:
+          return min([self.getMazeDistance(curPos, a) for a in legalBlue])
 
-
+  def getTimeLeft(self, gameState):
+      return gameState.data.timeleft
 
 class DefensiveReflexAgent(ReflexCaptureAgent):
   """
@@ -374,34 +438,59 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
     curEnemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
     invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
     curInvaders = [a for a in curEnemies if a.isPacman and a.getPosition() != None]
-    features['numInvaders'] = len(invaders)
 
-    if len(curInvaders) == 0 and not successor.getAgentState(self.index).isPacman and curPos not in tunnels and \
-        successor.getAgentState(self.index).getPosition() in tunnels:
-        features['wasteAction'] = -1
 
-    if len(invaders) > 0 and curState.scaredTimer == 0:
+    if self.ifNeedsBlockTunnel(curInvaders, curPos, curCapsule) and curState.scaredTimer == 0:
+        features['runToTunnelEntry'] = self.getMazeDistance(getTunnelEntry(curInvaders[0].getPosition(),tunnels,legalPositions),sucPos)
+        return features
+
+    if curPos in tunnels and len(curInvaders) == 0 and nextPos == getTunnelEntry(curPos, tunnels, legalPositions):
+        features['leaveTunnel'] = 1
+        print features
+
+
+    features['numInvaders'] = len(invaders)        
+    if len(curInvaders) == 0 and not successor.getAgentState(self.index).isPacman and curState.scaredTimer == 0:
+        if  curPos not in tunnels and successor.getAgentState(self.index).getPosition() in tunnels: 
+            features['wasteAction'] = -1
+
+
+    if len(invaders) > 0 and curState.scaredTimer == 0:            
         dists = [self.getMazeDistance(sucPos, a.getPosition()) for a in invaders]
         features['invaderDistance'] = min(dists)
     
-    if len(invaders) > 0 and curState.scaredTimer != 0:
+    if len(invaders) > 0 and curState.scaredTimer != 0:           
         dists = min([self.getMazeDistance(sucPos, a.getPosition()) for a in invaders])
         features['followMode'] = (dists-2)*(dists-2)
         if curPos not in tunnels and successor.getAgentState(self.index).getPosition() in tunnels:
             features['wasteAction'] = -1
 
-    if len(invaders) > 0 and len(curCapsule) != 0:
+    if len(invaders) > 0 and len(curCapsule) != 0:         
         dist1 = [self.getMazeDistance(curCapsule[0], a.getPosition()) for a in invaders]
         dist2 = self.getMazeDistance(curCapsule[0], sucPos)
         features['protectCapsules'] = dist2 - min(dist1)
 
 
-    if action == Directions.STOP: features['stop'] = 1
+    if action == Directions.STOP: features['stop'] = 1        
     rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
-    if action == rev: features['reverse'] = 1
+    if action == rev: features['reverse'] = 1              
     return features
 
   def getWeights(self, gameState, action):
-    return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -100, 'stop': -1000, 'reverse': -2, 'protectCapsules': 80, 'wasteAction':2000,'followMode':-1000}
+    return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -100, 'stop': -1000, 'reverse': -2, 'protectCapsules': 80, 'wasteAction':2000,'followMode':-1000, 'runToTunnelEntry': -1, 'leaveTunnel':-100}
+
+  
+  def ifNeedsBlockTunnel(self, curInvaders, currentPostion, curCapsule): 
+    if len(curInvaders) == 1:
+      invadersPos = curInvaders[0].getPosition()
+      if invadersPos in tunnels:
+        tunnelEntry = getTunnelEntry(invadersPos, tunnels, legalPositions)
+        if self.getMazeDistance(tunnelEntry,currentPostion) <= self.getMazeDistance(tunnelEntry,invadersPos) and curCapsule not in getATunnel(invadersPos,tunnels):
+           return True
+    return False
+  
+
+
+
 
 
