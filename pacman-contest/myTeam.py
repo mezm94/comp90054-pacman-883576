@@ -52,6 +52,7 @@ Zhenyuan : I wrote three functions here
 tunnels = []
 walls = []
 
+
 def getAllTunnels(legalPositions):
     tunnels = []
     while len(tunnels) != len(getMoreTunnels(legalPositions, tunnels)):
@@ -106,7 +107,7 @@ def nextPos(pos, action):
   return pos
 
 def manhattanDist((x1,y1),(x2,y2)):
-   return x2-x1+y2-y1
+   return abs(x2-x1+y2-y1)
 
 
 def getPossibleEntry(pos, tunnels, legalPositions):
@@ -120,7 +121,6 @@ def getPossibleEntry(pos, tunnels, legalPositions):
     if (x, y - 1) in legalPositions and (x, y - 1) not in tunnels:
         return (x, y - 1)
     return None
-
 
 def getATunnel(pos, tunnels):
 
@@ -192,6 +192,9 @@ class ReflexCaptureAgent(CaptureAgent):
     """
     Zhenyuan : global variable tunnels here
     """
+    self.changeEntrance = False
+    self.nextEntrance = None
+    self.carriedDot = 0
     self.tunnelEntry = None
     global walls 
     global tunnels
@@ -209,7 +212,6 @@ class ReflexCaptureAgent(CaptureAgent):
     """
     Picks among actions randomly.
     """
-
     actions = gameState.getLegalActions(self.index)
 
     '''
@@ -324,15 +326,22 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
     myPos = successor.getAgentState(self.index).getPosition()
     nextPosition = nextPos(curPos,action)
     enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
-    ghost = [a for a in enemies if not a.isPacman and a.getPosition() is not None and manhattanDist(curPos,a.getPosition()) <= 5]
+    ghost = [a for a in enemies if not a.isPacman and a.getPosition() is not None]
     scaredGhost = [a for a in ghost if a.scaredTimer > 0]
     activeGhost = [a for a in ghost if a not in scaredGhost]
     invaders = [a for a in enemies if a.isPacman and a.getPosition() is not None]
     foodList = self.getFood(successor).asList()
+    currentFoodList = self.getFood(gameState).asList()
     rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
     minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
     capsule = self.getCapsules(gameState)
     checkTunnel = self.ifWasteTunnel(gameState, successor)
+
+
+    if nextPosition in currentFoodList:
+        self.carriedDot += 1
+    if not gameState.getAgentState(self.index).isPacman:
+        self.carriedDot = 0
 
     if self.getTimeLeft(gameState)/4 < self.getLengthToHome(gameState) + 3:
         features['distToHome'] = self.getLengthToHome(successor)
@@ -355,6 +364,7 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
     if len(activeGhost) > 0:
         dists = min([self.getMazeDistance(myPos, a.getPosition()) for a in activeGhost])
         features['distToGhost'] = dists
+        features['return'] = self.carriedDot*self.getLengthToHome(successor)
         ghostPos = [a.getPosition() for a in activeGhost]
         if nextPosition in ghostPos:
             features['die'] = 1
@@ -387,6 +397,21 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
             if len(scaredGhost) != 0 and scaredGhost[0].scaredTimer - lengthToEscape == 1:
                 features['escapeTunnel'] = self.getMazeDistance(myPos, self.tunnelEntry)
 
+    preState = self.getPreviousObservation()
+    if preState != None:
+      prePos = preState.getAgentState(self.index).getPosition()
+      lastEnemies = [preState.getAgentState(i) for i in self.getOpponents(preState)]
+      lastActiveGhost = [a for a in enemies if not a.isPacman and a.getPosition() is not None and a.scaredTimer == 0]
+      if len(lastActiveGhost) != 0:
+        dist = min([manhattanDist(prePos, a.getPosition()) for a in lastActiveGhost])
+        if dist == 5 and not gameState.getAgentState(self.index).isPacman:
+          self.changeEntrance = True
+          self.nextEntrance = random.choice(self.getEntrance(gameState))
+      if self.nextEntrance != None:
+        if self.getMazeDistance(myPos,self.nextEntrance) <= 1:
+          self.changeEntrance = False
+        elif self.changeEntrance == True and len(activeGhost) == 0:
+          features['runToNextEntrance'] = self.getMazeDistance(myPos,self.nextEntrance)
     return features
 
   def getWeights(self, gameState, action):
@@ -395,7 +420,7 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
     a counter or a dictionary.
     """
     return {'closestFood':  -2, 'distToHome':-10,'successorScore': 800,  'distanceToCapsule': 4000, 'stop':-1000,
-        'distToGhost': 50, 'wasteAction': 2000,'escapeTunnel':-3000,'die':-10000}
+        'distToGhost': 50, 'wasteAction': 2000,'escapeTunnel':-3000,'die':-10000,'return':-10,'runToNextEntrance':-5}
 
   def getLengthToHome(self, gameState):
       curPos = gameState.getAgentState(self.index).getPosition()
@@ -412,6 +437,24 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
   def getTimeLeft(self, gameState):
       return gameState.data.timeleft
 
+  def getEntrance(self,gameState):
+        width = gameState.data.layout.width
+        height = gameState.data.layout.height
+        legalPositions = [p for p in gameState.getWalls().asList(False)]
+        legalRed = [p for p in legalPositions if p[0] == width / 2]
+        legalBlue = [p for p in legalPositions if p[0] == width / 2 + 1]
+        redEntrance = []
+        blueEntrance = []
+        for i in legalRed:
+            for j in legalBlue:
+                if i[0] + 1 == j[0] and i[1] == j[1]:
+                    redEntrance.append(i)
+                    blueEntrance.append(j)
+        if self.red:
+            return redEntrance
+        else:
+            return blueEntrance
+
 class DefensiveReflexAgent(ReflexCaptureAgent):
   """
   A reflex agent that keeps its side Pacman-free. Again,
@@ -419,6 +462,17 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
   could be like.  It is not the best or only way to make
   such an agent.
   """
+  def getLengthToBoundary(self, gameState):         #Length to the mid map's boundary
+      curPos = gameState.getAgentState(self.index).getPosition()
+      width = gameState.data.layout.width
+      height = gameState.data.layout.height
+      legalPositions = [p for p in gameState.getWalls().asList(False)]
+      legalRed = [p for p in legalPositions if p[0] == width / 2]
+      legalBlue = [p for p in legalPositions if p[0] == width / 2 + 1]
+      if self.red:
+          return min([self.getMazeDistance(curPos, a) for a in legalRed])
+      else:
+          return min([self.getMazeDistance(curPos, a) for a in legalBlue])
 
   def getFeatures(self, gameState, action):
     features = util.Counter()
@@ -428,10 +482,14 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
     sucState = successor.getAgentState(self.index)
     sucPos = sucState.getPosition()
     curCapsule = self.getCapsulesYouAreDefending(gameState)
-
+    lengthToBoundary = self.getLengthToBoundary(successor)
     # Computes whether we're on defense (1) or offense (0)
     features['onDefense'] = 100
     if sucState.isPacman: features['onDefense'] = 0
+
+    if self.getTimeLeft(gameState)/4 > 300 - (self.getLengthToBoundary(successor)-5):
+      features['runToBoundary'] = self.getLengthToBoundary(successor)
+
 
     # Computes distance to invaders we can see
     enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
@@ -439,15 +497,12 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
     invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
     curInvaders = [a for a in curEnemies if a.isPacman and a.getPosition() != None]
 
-
     if self.ifNeedsBlockTunnel(curInvaders, curPos, curCapsule) and curState.scaredTimer == 0:
         features['runToTunnelEntry'] = self.getMazeDistance(getTunnelEntry(curInvaders[0].getPosition(),tunnels,legalPositions),sucPos)
         return features
 
     if curPos in tunnels and len(curInvaders) == 0 and nextPos == getTunnelEntry(curPos, tunnels, legalPositions):
         features['leaveTunnel'] = 1
-        print features
-
 
     features['numInvaders'] = len(invaders)        
     if len(curInvaders) == 0 and not successor.getAgentState(self.index).isPacman and curState.scaredTimer == 0:
@@ -457,7 +512,8 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
 
     if len(invaders) > 0 and curState.scaredTimer == 0:            
         dists = [self.getMazeDistance(sucPos, a.getPosition()) for a in invaders]
-        features['invaderDistance'] = min(dists)
+        lengthToBoundary = self.getLengthToBoundary(successor)
+        features['invaderDistance'] = min(dists) + 0.01*lengthToBoundary
     
     if len(invaders) > 0 and curState.scaredTimer != 0:           
         dists = min([self.getMazeDistance(sucPos, a.getPosition()) for a in invaders])
@@ -473,11 +529,12 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
 
     if action == Directions.STOP: features['stop'] = 1        
     rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
-    if action == rev: features['reverse'] = 1              
+    if action == rev: features['reverse'] = 1            
     return features
 
   def getWeights(self, gameState, action):
-    return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -100, 'stop': -1000, 'reverse': -2, 'protectCapsules': 80, 'wasteAction':2000,'followMode':-1000, 'runToTunnelEntry': -1, 'leaveTunnel':-100}
+    return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -100, 'stop': -1000, 'reverse': -2,
+     'protectCapsules': 80, 'wasteAction':2000,'followMode':-1000, 'runToTunnelEntry': -1, 'leaveTunnel':-100,'runToBoundary':-20}
 
   
   def ifNeedsBlockTunnel(self, curInvaders, currentPostion, curCapsule): 
@@ -488,6 +545,11 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
         if self.getMazeDistance(tunnelEntry,currentPostion) <= self.getMazeDistance(tunnelEntry,invadersPos) and curCapsule not in getATunnel(invadersPos,tunnels):
            return True
     return False
+
+  def getTimeLeft(self, gameState):
+      return gameState.data.timeleft
+
+
   
 
 
