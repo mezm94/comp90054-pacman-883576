@@ -109,10 +109,8 @@ def nextPos(pos, action):
     return (x - 1, y)
   return pos
 
-def manhattanDist(pos1,pos2):
-    x1, y1 = pos1
-    x2, y2 = pos2
-    return abs(x2-x1) + abs(y2-y1)
+def manhattanDist((x1,y1),(x2,y2)):
+   return abs(x2-x1) + abs(y2-y1)
 
 
 def getPossibleEntry(pos, tunnels, legalPositions):
@@ -160,12 +158,12 @@ def getTunnelEntry(pos, tunnels, legalPositions):
 
 
 class Node:
-    def __init__(self, value, id=0):
-        (gameState, t, n) = value
-        self.id = id
-        self.children = []
-        self.value = (gameState, float(t), float(n))
-        self.isLeaf = True
+    def __init__(self, value, id = 0):
+      (gameState, t, n) = value
+      self.id = id
+      self.children = []
+      self.isLeaf = True
+      self.value = 0   
 
     def addChild(self, child):
         self.children.append(child)
@@ -178,9 +176,9 @@ class Node:
             _, t, n = i.value
             if n == 0:
                 return i
-            UCB = t + 1.96 * math.sqrt(math.log(pn) / n)
+            UCB = t + 1.96 * math.sqrt(math.log(pn)/n)
             if maxUCB < UCB:
-                maxUCB = UCB
+                maxT = UCB
                 bestChild = i
         return bestChild
 
@@ -194,9 +192,9 @@ class Node:
                     return possibleParent
 
     def __str__(self):
-        (_, t, n) = self.value
+        ((x, y), t, n) = self.value
         id = self.id
-        return "Node " + str(id) + ", t = " + str(t) + ", n = " + str(n)
+        return "Node "+ str(id) + ", t = " + str(t) + ", n = " + str(n)
 
 
 class Tree:
@@ -294,7 +292,6 @@ class ReflexCaptureAgent(CaptureAgent):
     self.runToBoundary = None
     self.stuckStep = 0
     self.curLostFood = None
-    self.ifStuck = False
     global defensiveTunnels
     width = gameState.data.layout.width
     legalRed = [p for p in legalPositions if p[0] < width / 2]
@@ -316,11 +313,6 @@ class ReflexCaptureAgent(CaptureAgent):
 
     Q = max(values)
     bestActions = [a for a, v in zip(actions, values) if v == Q]
-
-    if self.ifStuck:
-        node = Node(gameState, 0, 0)
-        tree = Tree(node)
-        return self.simulation(tree)
 
     action = random.choice(bestActions)
 
@@ -625,65 +617,6 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
           return min([self.getMazeDistance(curPos, a) for a in legalRed])
       else:
           return min([self.getMazeDistance(curPos, a) for a in legalBlue])
-
-  # methods for MCT
-  def OfsRollout(self, gameState):
-        counter = 2
-        enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
-        ghost = [a for a in enemies if not a.isPacman and a.getPosition() is not None]
-        ghostPos = [a.getPosition() for a in ghost]
-        curState = gameState
-        while counter != 0:
-            counter -= 1
-            actions = curState.getLegalActions(self.index)
-            nextAction = random.choice(actions)
-            successor = self.getSuccessor(curState, nextAction)
-            myPos = nextPos(curState.getAgentState(self.index).getPosition(), nextAction)
-            if myPos in ghostPos:
-                return -9999
-            curState = successor
-        return self.evaluate(curState, 'Stop')
-
-  def simulation(self, gameState):
-        (x1, y1) = gameState.getAgentPosition(self.index)
-        root = Node((gameState, 0, 0))
-        mct = Tree(root)
-        startTime = time.time()
-        while time.time() - startTime < 0.95:
-            self.iteration(mct)
-        nextState = mct.tree.chooseChild().value[0]
-        (x2, y2) = nextState.getAgentPosition(self.index)
-        if x1 + 1 == x2:
-            return Directions.EAST
-        if x1 - 1 == x2:
-            return Directions.WEST
-        if y1 + 1 == y2:
-            return Directions.NORTH
-        if y1 - 1 == y2:
-            return Directions.SOUTH
-        return Directions.STOP
-
-  def iteration(self, mct):
-        if mct.tree.children == []:
-            self.expand(mct, mct.tree)
-        else:
-            leaf = mct.select()
-            if leaf.value[2] == 0:
-                r = self.OfsRollout(leaf.value[0])
-                mct.backPropagate(r, leaf)
-            elif leaf.value[2] == 1:
-                self.expand(mct, leaf)
-                newLeaf = random.choice(leaf.children)
-                r = self.OfsRollout(newLeaf.value[0])
-                mct.backPropagate(r, newLeaf)
-
-  def expand(self, mct, node):
-        actions = node.value[0].getLegalActions(self.index)
-        actions.remove(Directions.STOP)
-        for action in actions:
-            successor = node.value[0].generateSuccessor(self.index, action)
-            successorNode = Node((successor, 0, 0))
-            mct.insert(node, successorNode)
 
 
 class DefensiveReflexAgent(ReflexCaptureAgent):
