@@ -158,12 +158,12 @@ def getTunnelEntry(pos, tunnels, legalPositions):
 
 
 class Node:
-    def __init__(self, value, id = 0):
-      (gameState, t, n) = value
-      self.id = id
-      self.children = []
-      self.isLeaf = True
-      self.value = 0   
+    def __init__(self, value, id=0):
+        (gameState, t, n) = value
+        self.id = id
+        self.children = []
+        self.value = (gameState, float(t), float(n))
+        self.isLeaf = True
 
     def addChild(self, child):
         self.children.append(child)
@@ -176,9 +176,9 @@ class Node:
             _, t, n = i.value
             if n == 0:
                 return i
-            UCB = t + 1.96 * math.sqrt(math.log(pn)/n)
+            UCB = t + 1.96 * math.sqrt(math.log(pn) / n)
             if maxUCB < UCB:
-                maxT = UCB
+                maxUCB = UCB
                 bestChild = i
         return bestChild
 
@@ -192,9 +192,9 @@ class Node:
                     return possibleParent
 
     def __str__(self):
-        ((x, y), t, n) = self.value
+        (_, t, n) = self.value
         id = self.id
-        return "Node "+ str(id) + ", t = " + str(t) + ", n = " + str(n)
+        return "Node " + str(id) + ", t = " + str(t) + ", n = " + str(n)
 
 
 class Tree:
@@ -233,6 +233,73 @@ class Tree:
             return self.select(nextNode)
         else:
             return node
+
+class ParticleFilter:
+    
+  def __init__(self, agent, gameState):
+    
+    self.start = gameState.getInitialAgentPosition(agent.index)
+    self.agent = agent
+    self.midWidth = gameState.data.layout.width/2
+    self.legalPositions = [p for p in gameState.getWalls().asList(False)]
+    self.enemies = self.agent.getOpponents(gameState)
+    self.beliefs = {}
+    for enemy in self.enemies:
+        self.beliefs[enemy] = util.Counter()
+        self.beliefs[enemy][gameState.getInitialAgentPosition(enemy)] = 1.0
+        self.beliefs[enemy].normalize()
+
+  def elapseTime(self):
+
+    for enemy in self.enemies:
+        dist = util.Counter()
+
+        for p in self.legalPositions:
+            newDist = util.Counter()
+
+            allPositions = [(p[0]+i, p[1]+j) for i in [-1,0,1] for j in [-1,0,1] if not (abs(i) == 1 and abs(j) == 1)]
+
+            for q in self.legalPositions:
+                if q in allPositions:
+                    newDist[q] = 1.0
+            newDist.normalize()
+
+            for pos, probability in newDist.items():
+                dist[pos] = dist[pos] + self.beliefs[self.enemy][pos] * probability
+
+        dist.normalize()
+        self.beliefs[enemy] = dist
+
+  def observe(self, agent, gameState):
+
+      myPos = gameState.getAgentPosition(agent.index)
+      noisyDistance = gameState.getAgentDistances()
+
+      dist = util.Counter()
+
+      for enemy in self.enemies:
+          for pos in self.legalPositions:
+
+              trueDistance = util.manhattanDistance(myPos, pos)
+              probability = gameState.getDistanceProb(trueDistance, noisyDistance)
+
+              if agent.red:
+                  ifPacman = pos[0] < self.midWidth
+              else:
+                  ifPacman = pos[0] > self.midWidth
+
+              if trueDistance <= 6 or ifPacman != gameState.getAgentState(enemy).isPacman:
+                  dist[pos] = 0.0
+              else:
+                  dist[pos] = self.beliefs[enemy][pos] * probability
+
+          dist.normalize()
+          self.beliefs[enemy] = dist
+
+  def getPossiblePosition(self, enemy):
+    
+      pos = self.beliefs[enemy].argMax()
+      return pos
 
 class ReflexCaptureAgent(CaptureAgent):
   """
@@ -292,6 +359,9 @@ class ReflexCaptureAgent(CaptureAgent):
     self.runToBoundary = None
     self.stuckStep = 0
     self.curLostFood = None
+    self.ifStuck = False
+    self.enemyGuess = ParticleFilter(self, gameState)
+    self.invadersGuess = False
     global defensiveTunnels
     width = gameState.data.layout.width
     legalRed = [p for p in legalPositions if p[0] < width / 2]
@@ -305,7 +375,6 @@ class ReflexCaptureAgent(CaptureAgent):
 
 
   def chooseAction(self, gameState):
-
     actions = gameState.getLegalActions(self.index)
 
     values = [self.evaluate(gameState, a) for a in actions]
@@ -315,7 +384,8 @@ class ReflexCaptureAgent(CaptureAgent):
     bestActions = [a for a, v in zip(actions, values) if v == Q]
 
     action = random.choice(bestActions)
-
+    if self.ifStuck:
+        return self.simulation(gameState)
     return action
 
   def getSuccessor(self, gameState, action):
@@ -415,6 +485,66 @@ class ReflexCaptureAgent(CaptureAgent):
             return redEntrance
         else:
             return blueEntrance
+
+  def OfsRollout(self,gameState):
+    counter = 2
+    enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
+    ghost = [a for a in enemies if not a.isPacman and a.getPosition() is not None]
+    ghostPos = [a.getPosition() for a in ghost]
+    curState = gameState
+    while counter != 0:
+      counter -= 1
+      actions = curState.getLegalActions(self.index)
+      nextAction = random.choice(actions)
+      successor = self.getSuccessor(curState,nextAction)
+      myPos = nextPos(curState.getAgentState(self.index).getPosition(),nextAction)
+      if myPos in ghostPos:
+          return -9999
+      curState = successor
+    return self.evaluate(curState,'Stop')
+
+  def simulation(self, gameState):
+      (x1, y1) = gameState.getAgentPosition(self.index)
+      root = Node((gameState, 0, 0))
+      mct = Tree(root)
+      startTime = time.time()
+      while time.time() - startTime < 0.95:
+          self.iteration(mct)
+      nextState = mct.tree.chooseChild().value[0]
+      (x2, y2) = nextState.getAgentPosition(self.index)
+      print x1,y1
+      print x2,y2
+      if x1 + 1 == x2:
+          return Directions.EAST
+      if x1 - 1 == x2:
+          return Directions.WEST
+      if y1 + 1 == y2:
+          return Directions.NORTH
+      if y1 - 1 == y2:
+          return Directions.SOUTH
+      return Directions.STOP
+
+  def iteration(self, mct):
+      if mct.tree.children == []:
+          self.expand(mct, mct.tree)
+      else:
+          leaf = mct.select()
+          if leaf.value[2] == 0:
+              r = self.OfsRollout(leaf.value[0])
+              mct.backPropagate(r, leaf)
+          elif leaf.value[2] == 1:
+              self.expand(mct, leaf)
+              newLeaf = random.choice(leaf.children)
+              r = self.OfsRollout(newLeaf.value[0])
+              mct.backPropagate(r, newLeaf)
+
+  def expand(self, mct, node):
+      actions = node.value[0].getLegalActions(self.index)
+      actions.remove(Directions.STOP)
+      for action in actions:
+          successor = node.value[0].generateSuccessor(self.index, action)
+          successorNode = Node((successor, 0, 0))
+          mct.insert(node, successorNode)
 
 
 class OffensiveReflexAgent(ReflexCaptureAgent):
@@ -640,6 +770,7 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
           return min([self.getMazeDistance(curPos, a) for a in legalBlue])
 
   def getFeatures(self, gameState, action):
+
     features = util.Counter()
     successor = self.getSuccessor(gameState, action)
     curPos = gameState.getAgentState(self.index).getPosition()
@@ -665,6 +796,13 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
     curEnemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
     invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
     curInvaders = [a for a in curEnemies if a.isPacman and a.getPosition() != None]
+
+
+    if self.invadersGuess:
+        self.enemyGuess.observe(self, gameState)
+        enemyPos = self.enemyGuess.getPossiblePosition(curInvaders[0])
+        features['runToTunnelEntry'] = self.getMazeDistance(enemyPos, sucPos)
+        self.enemyGuess.elapseTime()
 
     if self.ifNeedsBlockTunnel(curInvaders, curPos, curCapsule) and curState.scaredTimer == 0:
         features['runToTunnelEntry'] = self.getMazeDistance(getTunnelEntry(curInvaders[0].getPosition(),tunnels,legalPositions),sucPos)
