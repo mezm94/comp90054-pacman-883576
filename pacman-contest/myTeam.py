@@ -47,21 +47,31 @@ def createTeam(firstIndex, secondIndex, isRed,
 # Agents #
 ##########
 
-"""
-Zhenyuan : I wrote three functions here
-"""
 
-tunnels = []
+# tunnels will store all tunnel positions of the map, the tunnel means 
+#only one way to leave
+tunnels = []   
+
+# tunnels will store all tunnel positions of the map, but regarding the 
+# boundary as wall to find tunnels. 
 defensiveTunnels = []
+
+# store the walls of the map
 walls = []
 
-
+"""
+getAllTunnels will return the all tunnels as a list, it uses a while loop 
+#to find a tunnel level by level, stop until no more tunnels in the map
+"""
 def getAllTunnels(legalPositions):
     tunnels = []
     while len(tunnels) != len(getMoreTunnels(legalPositions, tunnels)):
         tunnels = getMoreTunnels(legalPositions, tunnels)
     return tunnels
 
+"""
+getMoreTunnels is the function to find the next level's tunnel
+"""
 def getMoreTunnels(legalPositions, tunnels):
     newTunnels = tunnels
     for i in legalPositions:
@@ -71,6 +81,9 @@ def getMoreTunnels(legalPositions, tunnels):
             newTunnels.append(i)
     return newTunnels
 
+"""
+getMoreTunnels is the function to find the next level's tunnel
+"""
 def getSuccsorsNum(pos, legalPositions):
     num = 0
     x, y = pos
@@ -84,6 +97,9 @@ def getSuccsorsNum(pos, legalPositions):
         num += 1
     return num
 
+"""
+getSuccsorsPos will return all position's legal neighbor positions
+"""
 def getSuccsorsPos(pos, legalPositions):
     succsorsPos = []
     x, y = pos
@@ -97,6 +113,9 @@ def getSuccsorsPos(pos, legalPositions):
         succsorsPos.append((x, y - 1))
     return succsorsPos
 
+"""
+given current position and an action, nextPos will return the next position
+"""
 def nextPos(pos, action):
   x, y = pos
   if action == Directions.NORTH:
@@ -109,10 +128,32 @@ def nextPos(pos, action):
     return (x - 1, y)
   return pos
 
-def manhattanDist((x1,y1),(x2,y2)):
-   return abs(x2-x1) + abs(y2-y1)
+"""
+manhattanDist: input two points, return the mahattan distance between 
+these two points
+"""
+def manhattanDist(pos1, pos2):
+    x1, y1 = pos1
+    x2, y2 = pos2
+    return abs(x2 - x1) + abs(y2 - y1)
 
+"""
+getTunnelEntry: given a position, if position in tunnels, it will return
+the entry position of this tunnel
+"""
+def getTunnelEntry(pos, tunnels, legalPositions):
+    if pos not in tunnels:
+        return None
+    aTunnel = getATunnel(pos, tunnels)
+    for i in aTunnel:
+        possibleEntry = getPossibleEntry(i, tunnels, legalPositions)
+        if possibleEntry != None:
+            return possibleEntry
 
+"""
+getPossibleEntry: this assisted funtion used in getTunnelEntry to
+find if next neighbor position is tunnel entry
+"""
 def getPossibleEntry(pos, tunnels, legalPositions):
     x, y = pos
     if (x + 1, y) in legalPositions and (x + 1, y) not in tunnels:
@@ -125,38 +166,35 @@ def getPossibleEntry(pos, tunnels, legalPositions):
         return (x, y - 1)
     return None
 
+"""
+getATunnel: input a position and tunnels, this function will return a tunnel
+that this position belongs to
+"""
 def getATunnel(pos, tunnels):
 
     if pos not in tunnels:
         return None
-
     bfs_queue = util.Queue()
     closed = []
     bfs_queue.push(pos)
-
     while not bfs_queue.isEmpty():
         currPos = bfs_queue.pop()
-
         if currPos not in closed:
             closed.append(currPos)
             succssorsPos = getSuccsorsPos(currPos, tunnels)
             for i in succssorsPos:
                 if i not in closed:
                     bfs_queue.push(i)
-
     return closed
 
 
-def getTunnelEntry(pos, tunnels, legalPositions):
-    if pos not in tunnels:
-        return None
-    aTunnel = getATunnel(pos, tunnels)
-    for i in aTunnel:
-        possibleEntry = getPossibleEntry(i, tunnels, legalPositions)
-        if possibleEntry != None:
-            return possibleEntry
-
-
+"""
+class node: used in UCTs process. Nodes are different gameStates, it has
+some functions:
+addChild, to add a child node. 
+findParnt: find this node's parent node. 
+chooseChild: choose the child with highest UCT value
+"""
 class Node:
     def __init__(self, value, id=0):
         (gameState, t, n) = value
@@ -197,6 +235,14 @@ class Node:
         return "Node " + str(id) + ", t = " + str(t) + ", n = " + str(n)
 
 
+"""
+class tree: used in UCTs process, to store nodes, it has some functions:
+insert: given a parent node and child node, add this child node to the tree
+getParent: uses findParent function to return the parent node
+backPropagate: standard UCT backpropagate process, do update job
+select: iteratively find the child with largest UCT value
+
+"""
 class Tree:
     def __init__(self, root):
         self.count = 1
@@ -234,6 +280,13 @@ class Tree:
         else:
             return node
 
+
+
+    """
+    This class generates beliefs of positions of invaders 
+    HMM model is applied in this class
+
+    """
 class ParticleFilter:
     
   def __init__(self, agent, gameState):
@@ -249,6 +302,10 @@ class ParticleFilter:
         self.beliefs[enemy][gameState.getInitialAgentPosition(enemy)] = 1.0
         self.beliefs[enemy].normalize()
 
+
+  
+  # This function updates the distribution of invaders'
+  # location with uniformed distribution
   def elapseTime(self):
 
     for enemy in self.enemies:
@@ -270,6 +327,8 @@ class ParticleFilter:
         dist.normalize()
         self.beliefs[enemy] = dist
 
+  # This function uses noisy distance to narrow the range
+  # of probabilities of invaders' location
   def observe(self, agent, gameState):
 
       myPos = gameState.getAgentPosition(agent.index)
@@ -332,40 +391,32 @@ class ReflexCaptureAgent(CaptureAgent):
     self.start = gameState.getAgentPosition(self.index)
     CaptureAgent.registerInitialState(self, gameState)
 
-
-    '''
-    Your initialization code goes here, if you need any.
-    '''
-    """
-    Zhenyuan : global variable tunnels here
-    self.debugDraw(defensiveTunnels, [0.5,0.5,0])
-    """
-    self.changeEntrance = False
-    self.nextEntrance = None
-    self.carriedDot = 0
-    self.tunnelEntry = None
-    global walls 
-    global tunnels
-    global openRoad
-    global legalPositions
+    self.changeEntrance = False                                         # control the change entrance feature
+    self.nextEntrance = None                                            # if need change entrance, it stores the next entrace's position
+    self.carriedDot = 0                                                 # store the dots the offensive agent carried
+    self.tunnelEntry = None                                             # if agents in tunnel, store this tunnel entry 
+    global walls                                                        # declare the global type
+    global tunnels                                                      # declare the global type
+    global openRoad                                                     # declare the global type, openRoad are the places that are not in tunnels
+    global legalPositions                                               # declare the global type
     walls = gameState.getWalls().asList()
     if len(tunnels) == 0:
       legalPositions = [p for p in gameState.getWalls().asList(False)]
       tunnels = getAllTunnels(legalPositions)
       openRoad = list(set(legalPositions).difference(set(tunnels)))
-    self.capsule = None
-    self.nextOpenFood = None
-    self.nextTunnelFood = None
-    self.runToBoundary = None
-    self.stuckStep = 0
-    self.curLostFood = None
-    self.ifStuck = False
-    self.enemyGuess = ParticleFilter(self, gameState)
-    self.invadersGuess = False
-    global defensiveTunnels
+    self.capsule = None                                                 # store the safe capsule that agent will run to
+    self.nextOpenFood = None                                            # store the nearest safe food in open road that agent will run to
+    self.nextTunnelFood = None                                          # store the nearest safe food in tunnel that agent will run to
+    self.runToBoundary = None                                           # store the nearest boundary position
+    self.stuckStep = 0                                                  # count the step if our agent is stuck with opponents
+    self.curLostFood = None                                             # store the current food that eaten by invader 
+    self.ifStuck = False                                                # When stuck found, this change to true, start to count steps
+    self.enemyGuess = ParticleFilter(self, gameState)                   # Store the invaders guessed position
+    self.invadersGuess = False                                          # if found invaders, this will change to True
+    global defensiveTunnels                                             # declare the global type
     width = gameState.data.layout.width
-    legalRed = [p for p in legalPositions if p[0] < width / 2]
-    legalBlue = [p for p in legalPositions if p[0] >= width / 2]
+    legalRed = [p for p in legalPositions if p[0] < width / 2]          # legal positions in red area
+    legalBlue = [p for p in legalPositions if p[0] >= width / 2]        # legal positions in blue area
 
     if len(defensiveTunnels) == 0:
         if self.red:
@@ -374,24 +425,34 @@ class ReflexCaptureAgent(CaptureAgent):
             defensiveTunnels = getAllTunnels(legalBlue)
 
 
+    """
+    chooseAction: if self.ifStuck is True, it will call MCTs function to make decision.
+    otherwise it will find the best action using evaluate function
+    """
+
   def chooseAction(self, gameState):
     actions = gameState.getLegalActions(self.index)
 
     values = [self.evaluate(gameState, a) for a in actions]
-    # print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
+
 
     Q = max(values)
+
+    if self.ifStuck:
+        return self.simulation(gameState)
+
     bestActions = [a for a, v in zip(actions, values) if v == Q]
 
     action = random.choice(bestActions)
-    if self.ifStuck:
-        return self.simulation(gameState)
+
     return action
 
-  def getSuccessor(self, gameState, action):
+
     """
     Finds the next successor which is a grid position (location tuple).
     """
+  def getSuccessor(self, gameState, action):
+
     successor = gameState.generateSuccessor(self.index, action)
     pos = successor.getAgentState(self.index).getPosition()
     if pos != nearestPoint(pos):
@@ -400,23 +461,24 @@ class ReflexCaptureAgent(CaptureAgent):
     else:
       return successor
 
-  def evaluate(self, gameState, action):
     """
     Computes a linear combination of features and feature weights
     """
+  def evaluate(self, gameState, action):
+
     features = self.getFeatures(gameState, action)
     weights = self.getWeights(gameState, action)
-    '''
-    if self.index == 0:
-        print action,features,features*weights
-        print gameState
-    '''
+
     return features * weights
     
+
+    """
+    if agent in tunnel entry, this method will be called to evaluate this
+    tunnel. if no food in this tunnel, return 0. Otherwise return the
+    distance between nearest food in tunnel with agent
+    """
   def ifWasteTunnel(self, gameState, successor):
-    '''
-    xueyang Ding, check if a tunnel is useless (no food inside)
-    '''
+
     curPos = gameState.getAgentState(self.index).getPosition()
     sucPos = successor.getAgentState(self.index).getPosition()
     if curPos not in tunnels and sucPos in tunnels:
@@ -441,10 +503,10 @@ class ReflexCaptureAgent(CaptureAgent):
               dfs_stack.push((i, nextLength))
     return 0
 
+
+   # get the closest food in tunnel using BFS search
   def getTunnelFood(self, gameState):
-      '''
-      Zhenyuan : get the closest food in tunnel if in tunnel
-      '''
+      
 
       curPos = gameState.getAgentState(self.index).getPosition()
       bfs_queue = util.Queue()
@@ -465,9 +527,12 @@ class ReflexCaptureAgent(CaptureAgent):
 
       return None
 
+    # get the rest steps for four agents
   def getTimeLeft(self, gameState):
       return gameState.data.timeleft
 
+    
+    # get all the legal position to jump to the middle boundary
   def getEntrance(self,gameState):
         width = gameState.data.layout.width
         height = gameState.data.layout.height
@@ -486,8 +551,11 @@ class ReflexCaptureAgent(CaptureAgent):
         else:
             return blueEntrance
 
+    
+    # sub method of MCTs. Simulate 20 steps using random walk and return the 
+    # value of last state, will break if eaten by the ghost
   def OfsRollout(self,gameState):
-    counter = 2
+    counter = 20
     enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
     ghost = [a for a in enemies if not a.isPacman and a.getPosition() is not None]
     ghostPos = [a.getPosition() for a in ghost]
@@ -503,6 +571,8 @@ class ReflexCaptureAgent(CaptureAgent):
       curState = successor
     return self.evaluate(curState,'Stop')
 
+
+    # The function running MCTs. Looping time is 0.95 second 
   def simulation(self, gameState):
       (x1, y1) = gameState.getAgentPosition(self.index)
       root = Node((gameState, 0, 0))
@@ -512,8 +582,6 @@ class ReflexCaptureAgent(CaptureAgent):
           self.iteration(mct)
       nextState = mct.tree.chooseChild().value[0]
       (x2, y2) = nextState.getAgentPosition(self.index)
-      print x1,y1
-      print x2,y2
       if x1 + 1 == x2:
           return Directions.EAST
       if x1 - 1 == x2:
@@ -524,6 +592,8 @@ class ReflexCaptureAgent(CaptureAgent):
           return Directions.SOUTH
       return Directions.STOP
 
+    
+    # iteration the tree one time: selection -> expand -> rollout -> back-propagation
   def iteration(self, mct):
       if mct.tree.children == []:
           self.expand(mct, mct.tree)
@@ -538,6 +608,8 @@ class ReflexCaptureAgent(CaptureAgent):
               r = self.OfsRollout(newLeaf.value[0])
               mct.backPropagate(r, newLeaf)
 
+    
+    # sub funtion for MCTs, to expand a visited leaf node 
   def expand(self, mct, node):
       actions = node.value[0].getLegalActions(self.index)
       actions.remove(Directions.STOP)
@@ -554,66 +626,77 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
     """
     Returns a counter of features for the state
     """
-    features = util.Counter()
-    successor = self.getSuccessor(gameState, action)
-    curPos = gameState.getAgentState(self.index).getPosition()
-    myPos = successor.getAgentState(self.index).getPosition()
-    nextPosition = nextPos(curPos,action)
+    features = util.Counter()                                             
+    successor = self.getSuccessor(gameState, action)                          # successor state's game state
+    curPos = gameState.getAgentState(self.index).getPosition()                # the current position of offensive agent
+    myPos = successor.getAgentState(self.index).getPosition()                 # the successor state's position of offensive agent (if next step will die this will be startpoint)
+    nextPosition = nextPos(curPos,action)                                     # the next position of offensive agent (if next step will die this will be next position)
     enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
-    ghost = [a for a in enemies if not a.isPacman and a.getPosition() is not None and manhattanDist(curPos,a.getPosition()) <= 5]
-    scaredGhost = [a for a in ghost if a.scaredTimer > 1]
-    activeGhost = [a for a in ghost if a not in scaredGhost]
-    invaders = [a for a in enemies if a.isPacman and a.getPosition() is not None]
-    currentFoodList = self.getFood(gameState).asList()
-    allFoodList = self.getFood(gameState).asList()
-    openRoadFood = [a for a in allFoodList if a not in tunnels]
-    tunnelFood = [a for a in allFoodList if a in tunnels]
-    rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
-    capsule = self.getCapsules(gameState)
-    checkTunnel = self.ifWasteTunnel(gameState, successor)
+    ghost = [a for a in enemies if not a.isPacman and a.getPosition() is not None and manhattanDist(curPos,a.getPosition()) <= 5]    # only count the ghost near offensive agent
+    scaredGhost = [a for a in ghost if a.scaredTimer > 1]                                     # the ghost that is scared but rest scared time > 1
+    activeGhost = [a for a in ghost if a not in scaredGhost]                                  # the ghost that is not scared or almost be active (rest scared time < 1)
+    invaders = [a for a in enemies if a.isPacman and a.getPosition() is not None]             # the invaders are Pacman found in our area
+    currentFoodList = self.getFood(gameState).asList()                                        # store all the current dots
+    openRoadFood = [a for a in currentFoodList if a not in tunnels]                           # store all the dots that are not in tunnel
+    tunnelFood = [a for a in currentFoodList if a in tunnels]                                 # store all the dots that are in tunnel
+    rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]     # store the reverse action of pre action
+    capsule = self.getCapsules(gameState)                                                     # store all the current captures
+    checkTunnel = self.ifWasteTunnel(gameState, successor)                                    # everytime check if agent in tunnel entry and evaluate that tunnel
 
     features['successorScore'] = self.getScore(successor)
 
-    if len(ghost) == 0:
+    # if no ghost nearby, set these to None, only focus on eating closest dots
+    if len(ghost) == 0:    
         self.capsule = None
         self.nextOpenFood = None
         self.nextTunnelFood = None
 
-    if gameState.getAgentState(self.index).isPacman:
+    # if agent has already enter opposite area, change to False
+    if gameState.getAgentState(self.index).isPacman:  
         self.changeEntrance = False
 
-    if nextPosition in currentFoodList:
+    # calculate the carried dot of agent, change to 0 if come back
+    if nextPosition in currentFoodList:                      
         self.carriedDot += 1
     if not gameState.getAgentState(self.index).isPacman:
         self.carriedDot = 0
 
-    if self.getTimeLeft(gameState)/4 < self.getLengthToHome(gameState) + 3:
+    # if left time just for coming back, add this feature to force agent coming back
+    if self.getTimeLeft(gameState)/4 < self.getLengthToHome(gameState) + 3: 
         features['distToHome'] = self.getLengthToHome(successor)
         return features
 
-    if len(activeGhost) == 0 and len(allFoodList) != 0 and len(currentFoodList) >= 3:
-      features['safeFoodDist'] = min([self.getMazeDistance(myPos, food) for food in allFoodList])
+    # When no ghost nearby, the distance between Pacman with nearest food
+    if len(activeGhost) == 0 and len(currentFoodList) != 0 and len(currentFoodList) >= 3:            
+      features['safeFoodDist'] = min([self.getMazeDistance(myPos, food) for food in currentFoodList])
       if myPos in self.getFood(gameState).asList():
           features['safeFoodDist'] = -1
-    if len(currentFoodList) < 3:
-      features['return'] = self.getLengthToHome(successor)
 
-    if len(activeGhost) > 0 and len(currentFoodList) >= 3:                                    
-        dists = min([self.getMazeDistance(myPos, a.getPosition()) for a in activeGhost])
+    # already can win, let agent safely comes back
+    if len(currentFoodList) < 3:
+      features['return'] = self.getLengthToHome(successor)  
+
+    # The distance between Pacman with nearest active ghost 
+    # adjusted to 100-distance to avoid negative number appeared 
+    if len(activeGhost) > 0 and len(currentFoodList) >= 3:                                  
+        dists = min([self.getMazeDistance(myPos, a.getPosition()) for a in activeGhost]) 
         features['distToGhost'] = 100 - dists
         ghostPos = [a.getPosition() for a in activeGhost]
+        # When next position is ghost position or ghost neighbor positions
         if nextPosition in ghostPos:
-            features['die'] = 1
+            features['die'] = 1           
         if nextPosition in [getSuccsorsPos(p,legalPositions) for p in ghostPos][0]:
             features['die'] = 1
+        # The distance between Pacman with nearest open road food
         if len(openRoadFood) > 0:             
-            features['openRoadFood'] = min([self.getMazeDistance(myPos, food) for food in openRoadFood])
+            features['openRoadFood'] = min([self.getMazeDistance(myPos, food) for food in openRoadFood]) 
             if myPos in openRoadFood:
               features['openRoadFood'] = -1
         elif len(openRoadFood) == 0:
             features['return'] = self.getLengthToHome(successor)
           
-    if len(activeGhost) > 0 and len(currentFoodList) >= 3:
+    # to find all safe foods that are not in tunnel, and get the nearest safe food
+    if len(activeGhost) > 0 and len(currentFoodList) >= 3:  
         if len(openRoadFood) > 0:
             safeFood = []
             for food in openRoadFood:
@@ -626,6 +709,7 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
                         self.nextOpenFood = food
                         break
 
+    # to find all safe foods that are in tunnel, and get the nearest safe food
     if len(activeGhost) > 0 and len(tunnelFood) > 0 and len(scaredGhost) == 0 and len(currentFoodList) >= 3:
         minTFDist = min([self.getMazeDistance(curPos, tf) for tf in tunnelFood])
         safeTfood = []
@@ -640,6 +724,7 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
                     self.nextTunnelFood = food
                     break
 
+    # force Pacman run to the nearest safe food
     if self.nextOpenFood != None:
         features['goToSafeFood'] = self.getMazeDistance(myPos, self.nextOpenFood)
         if myPos == self.nextOpenFood:
@@ -652,6 +737,7 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
             features['goToSafeFood'] = 0
             self.nextTunnelFood = None
 
+    # find the nearest safe capsule if activeghost nearby
     if len(activeGhost) > 0 and len(capsule) != 0:
         for c in capsule:
             if self.getMazeDistance(curPos, c) < min([self.getMazeDistance(c, a.getPosition()) for a in activeGhost]):
@@ -667,21 +753,29 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
             if c in getATunnel(curPos,tunnels):
                 self.capsule = c
 
+    # if find the nearest safe capsule, and agent is chased by ghost, run to that capsule
     if self.capsule != None:
         features['distanceToCapsule'] = self.getMazeDistance(myPos, self.capsule)
         if myPos == self.capsule:
             features['distanceToCapsule'] = 0
             self.capsule = None
 
+    # if no active ghost nearby, agent will not eat that capsule if it doesn't block the way
     if len(activeGhost) == 0 and myPos in capsule:
         features['leaveCapsule'] = 0.1
 
+    # Normally no use, the feature appears when Pacman needs to stop to let the ghost walk one 
+    # step, in order to avoid death.
     if action == Directions.STOP: features['stop'] = 1
 
+    # When in a tunnel entrance, this feature force Pacman does not go into an empty tunnel
     if successor.getAgentState(self.index).isPacman and curPos not in tunnels and \
         successor.getAgentState(self.index).getPosition() in tunnels and checkTunnel == 0:
         features['noFoodTunnel'] = -1
- 
+
+    # When ghost nearby and Pacman in a tunnel entrance, and this tunnel has food 
+    # inside, it will calculate the distance to judge if it can eat food then leave 
+    # tunnel safely. If not, this feature will appear to force it to leave the tunnel
     if len(activeGhost) > 0:
          dist = min([self.getMazeDistance(curPos, a.getPosition()) for a in activeGhost])
          if checkTunnel != 0 and checkTunnel*2 >= dist-1:
@@ -692,6 +786,8 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
          if checkTunnel != 0 and checkTunnel*2 >= scaredGhost[0].scaredTimer -1:
              features['wasteAction'] = -1
 
+    # When Pacman in a tunnel and suddenly ghost found nearby, Pacman will judge when it 
+    # should leave this tunnel
     if curPos in tunnels and len(activeGhost) > 0:
         foodPos = self.getTunnelFood(gameState)
         if foodPos == None:
@@ -722,6 +818,8 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         self.stuckStep = -1
         self.nextEntrance = random.choice(self.getEntrance(gameState))   
 
+    # When Pacman get stuck with the ghost between the boundary, after 10 steps, 
+    # this feature will appear to force Pacman change another random selected entrance
     if self.nextEntrance != None and features['goToSafeFood'] == 0:
         features['runToNextEntrance'] = self.getMazeDistance(myPos,self.nextEntrance)
 
@@ -750,14 +848,10 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
 
 
 class DefensiveReflexAgent(ReflexCaptureAgent):
-  """
-  A reflex agent that keeps its side Pacman-free. Again,
-  this is to give you an idea of what a defensive agent
-  could be like.  It is not the best or only way to make
-  such an agent.
-  """
 
-  def getLengthToBoundary(self, gameState):         #Length to the mid map's boundary
+    
+    # getLengthToBoundary: return the closest boundary position to agent
+  def getLengthToBoundary(self, gameState):     
       curPos = gameState.getAgentState(self.index).getPosition()
       width = gameState.data.layout.width
       height = gameState.data.layout.height
@@ -773,17 +867,18 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
 
     features = util.Counter()
     successor = self.getSuccessor(gameState, action)
-    curPos = gameState.getAgentState(self.index).getPosition()
-    curState = gameState.getAgentState(self.index)
-    sucState = successor.getAgentState(self.index)
-    sucPos = sucState.getPosition()
-    curCapsule = self.getCapsulesYouAreDefending(gameState)
-    lengthToBoundary = self.getLengthToBoundary(successor)
-    # Computes whether we're on defense (1) or offense (0)
-
+    curPos = gameState.getAgentState(self.index).getPosition()   # current defensive agent position
+    curState = gameState.getAgentState(self.index)               # current defensive agent state
+    sucState = successor.getAgentState(self.index)               # next defensive agent state
+    sucPos = sucState.getPosition()                              # successor state's position of agent
+    curCapsule = self.getCapsulesYouAreDefending(gameState)      # current capsule
+    lengthToBoundary = self.getLengthToBoundary(successor)       # length to the nearest boundary position
+  
+    # This feature force our defensive agent only walks in defensive area
     features['onDefense'] = 100
     if sucState.isPacman: features['onDefense'] = 0
 
+    # At the beginning , our defensive agent will run to boundary as quick as possible
     if self.runToBoundary == None:
         features['runToBoundary'] = self.getLengthToBoundary(successor)
 
@@ -791,13 +886,14 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
         self.runToBoundary = 0
 
 
-    # Computes distance to invaders we can see
-    enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
-    curEnemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
-    invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
-    curInvaders = [a for a in curEnemies if a.isPacman and a.getPosition() != None]
+    enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]       # successor state's enemies
+    curEnemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]    # current enemies
+    invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]          # successor state's enemies
+    curInvaders = [a for a in curEnemies if a.isPacman and a.getPosition() != None]    # current invaders
 
 
+    # When the ghost can block tunnel to get Pacman stuck, this feature forces 
+    # agent to run to that tunnel entry
     if self.invadersGuess:
         self.enemyGuess.observe(self, gameState)
         enemyPos = self.enemyGuess.getPossiblePosition(curInvaders[0])
@@ -808,34 +904,49 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
         features['runToTunnelEntry'] = self.getMazeDistance(getTunnelEntry(curInvaders[0].getPosition(),tunnels,legalPositions),sucPos)
         return features
 
+    # When in the tunnel and no invaders nearby, it will leave this tunnel as 
+    # quick as possible
     if curPos in defensiveTunnels and len(curInvaders) == 0:
         features['leaveTunnel'] = self.getMazeDistance(self.start, sucPos)
 
-    features['numInvaders'] = len(invaders)        
+    # This feature will let the ghost try to kill the Pacman
+    features['numInvaders'] = len(invaders) 
+
+    # This feature forces the ghost does not go into a tunnel when no invader found       
     if len(curInvaders) == 0 and not successor.getAgentState(self.index).isPacman and curState.scaredTimer == 0:
         if  curPos not in defensiveTunnels and successor.getAgentState(self.index).getPosition() in defensiveTunnels: 
             features['wasteAction'] = -1
 
+    # features['invaderDistance']: The distance between my ghost with the nearest invader
+    # features['lengthToBoundary']: length to the nearest boundary position
+    # This feature will appear when ghost chasing the Pacman, to ensure ghost 
+    # avoids Pacman coming back to home when chasing
     if len(invaders) > 0 and curState.scaredTimer == 0:            
         dists = [self.getMazeDistance(sucPos, a.getPosition()) for a in invaders]
         features['invaderDistance'] = min(dists)
         features['lengthToBoundary'] = self.getLengthToBoundary(successor)
     
+    # When ghost is in scared time, it will try to always keep two distance far away from the Pacman
     if len(invaders) > 0 and curState.scaredTimer != 0:           
         dists = min([self.getMazeDistance(sucPos, a.getPosition()) for a in invaders])
         features['followMode'] = (dists-2)*(dists-2)
         if curPos not in defensiveTunnels and successor.getAgentState(self.index).getPosition() in defensiveTunnels:
+            # This feature forces the ghost does not go into a tunnel when no invader found
             features['wasteAction'] = -1
 
+    # Distance between agent and capsule, if there are invaders nearby
     if len(invaders) > 0 and len(curCapsule) != 0:         
         dist2 = [self.getMazeDistance(c, sucPos) for c in curCapsule]
         features['protectCapsules'] = min(dist2)
 
+    # When the ghost can block tunnel to get Pacman stuck, this feature forces agent stopping
+    if action == Directions.STOP: features['stop'] = 1  
 
-    if action == Directions.STOP: features['stop'] = 1        
+    # This feature let our ghost do not go reverse      
     rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
     if action == rev: features['reverse'] = 1  
 
+    # When ghost found our food get lost, it will run to that lost food place
     if self.getPreviousObservation() != None:
       if len(invaders) == 0 and self.ifLostFood() != None:
           self.curLostFood = self.ifLostFood()
@@ -852,7 +963,10 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
     return {'numInvaders': -100, 'onDefense': 10, 'invaderDistance': -10, 'stop': -100, 'reverse': -2,'lengthToBoundary':-3,
      'protectCapsules': -3, 'wasteAction':200,'followMode':-100, 'runToTunnelEntry': -10, 'leaveTunnel':-0.1,'runToBoundary':-2,'goToLostFood':-1}
 
-  
+  """
+  This function is used to check if our agent needs to block the tunnel,
+  True means need to block.
+  """
   def ifNeedsBlockTunnel(self, curInvaders, currentPostion, curCapsule): 
     if len(curInvaders) == 1:
       invadersPos = curInvaders[0].getPosition()
@@ -862,6 +976,10 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
            return True
     return False
 
+
+  """
+  This function is used to check if any of our foods lost currently
+  """
   def ifLostFood(self):
         preState = self.getPreviousObservation()
         currState = self.getCurrentObservation()
